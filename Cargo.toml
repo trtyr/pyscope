@@ -1,0 +1,17 @@
+[package]
+name = "pyscope"
+version = "0.1.0"
+edition = "2024"
+description = "Python code satellite map — index, query, and navigate your codebase"
+license = "MIT"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+lsp-types = "0.95"
+anyhow = "1"
+flate2 = "1"
+rustpython-parser = "0.4"
+walkdir = "2"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
