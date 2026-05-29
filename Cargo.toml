@@ -1,6 +1,6 @@
 [package]
 name = "pyscope"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Python code satellite map — index, query, and navigate your codebase"
 license = "MIT"
