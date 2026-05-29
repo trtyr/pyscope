@@ -66,10 +66,7 @@ pub fn ask(graph: &CodeGraph, question: &str) -> Result<Value> {
         .build()
         .context("failed to build HTTP client")?;
 
-    let url = format!(
-        "{}/chat/completions",
-        config.api_base.trim_end_matches('/')
-    );
+    let url = format!("{}/chat/completions", config.api_base.trim_end_matches('/'));
     let response = client
         .post(&url)
         .bearer_auth(api_key)

@@ -1,7 +1,19 @@
+pub mod async_map;
+pub mod decorator_usage;
 pub mod deps;
+pub mod diff;
 pub mod fanout;
+pub mod hotspots;
+pub mod refactor_order;
 pub mod test_impact;
+pub mod type_coverage;
 
+pub use async_map::async_map;
+pub use decorator_usage::decorator_usage;
 pub use deps::deps;
+pub use diff::diff;
 pub use fanout::fanout;
+pub use hotspots::hotspots;
+pub use refactor_order::refactor_order;
 pub use test_impact::test_impact;
+pub use type_coverage::type_coverage;

@@ -75,11 +75,7 @@ pub fn find_nodes<'a>(graph: &'a CodeGraph, name: &str) -> Vec<&'a Node> {
         .collect()
 }
 
-pub fn require_unique_node<'a>(
-    graph: &'a CodeGraph,
-    name: &str,
-    label: &str,
-) -> Result<&'a Node> {
+pub fn require_unique_node<'a>(graph: &'a CodeGraph, name: &str, label: &str) -> Result<&'a Node> {
     let matches = find_nodes(graph, name);
     if matches.is_empty() {
         let names: Vec<&str> = graph.nodes.iter().map(|n| n.name.as_str()).collect();

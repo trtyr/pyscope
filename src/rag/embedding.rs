@@ -33,8 +33,13 @@ pub fn embed_query(api_key: &str, model: &str, query: &str) -> Result<Vec<f32>> 
         .send()
         .context("failed to call embeddings API")?;
     let status = response.status();
-    let body = response.text().context("failed to read embeddings response")?;
-    anyhow::ensure!(status.is_success(), "embedding request failed with {status}: {body}");
+    let body = response
+        .text()
+        .context("failed to read embeddings response")?;
+    anyhow::ensure!(
+        status.is_success(),
+        "embedding request failed with {status}: {body}"
+    );
     let data = serde_json::from_str::<EmbeddingResponse>(&body)
         .with_context(|| format!("failed to parse embedding response: {body}"))?;
     Ok(data
@@ -61,8 +66,13 @@ pub fn embed_nodes(api_key: &str, model: &str, nodes: &[Node]) -> Result<Vec<(No
         .send()
         .context("failed to call embeddings API")?;
     let status = response.status();
-    let body = response.text().context("failed to read embeddings response")?;
-    anyhow::ensure!(status.is_success(), "embedding request failed with {status}: {body}");
+    let body = response
+        .text()
+        .context("failed to read embeddings response")?;
+    anyhow::ensure!(
+        status.is_success(),
+        "embedding request failed with {status}: {body}"
+    );
     let data = serde_json::from_str::<EmbeddingResponse>(&body)
         .with_context(|| format!("failed to parse embedding response: {body}"))?;
 

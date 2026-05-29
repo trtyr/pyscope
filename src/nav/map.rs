@@ -136,8 +136,7 @@ pub fn nav_map(graph: &CodeGraph, full: bool, budget: usize) -> Result<Value> {
         let mut cluster_vec: Vec<(&str, usize, usize)> = clusters
             .iter()
             .map(|(file, nodes)| {
-                let total_deg: usize =
-                    nodes.iter().map(|n| index.degree(&n.id)).sum();
+                let total_deg: usize = nodes.iter().map(|n| index.degree(&n.id)).sum();
                 (*file, nodes.len(), total_deg)
             })
             .collect();

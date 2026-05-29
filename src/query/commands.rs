@@ -179,12 +179,7 @@ pub fn symbols(graph: &CodeGraph, kind: Option<&str>, limit: usize, filter: Symb
     })
 }
 
-pub fn impact(
-    graph: &CodeGraph,
-    name: &str,
-    depth: usize,
-    limit: usize,
-) -> Result<Value> {
+pub fn impact(graph: &CodeGraph, name: &str, depth: usize, limit: usize) -> Result<Value> {
     let index = QueryIndex::new(graph);
     let node = require_unique_node(graph, name, "symbol")?;
 
@@ -230,7 +225,10 @@ pub fn impact(
         })
         .collect();
     files_affected.sort_by(|a, b| {
-        b["count"].as_u64().unwrap_or(0).cmp(&a["count"].as_u64().unwrap_or(0))
+        b["count"]
+            .as_u64()
+            .unwrap_or(0)
+            .cmp(&a["count"].as_u64().unwrap_or(0))
     });
 
     // call_sites: direct callers with call_style and evidence
@@ -270,9 +268,8 @@ pub fn impact(
             ));
         }
         if node.visibility.as_deref() == Some("public") {
-            change_hints.push(
-                "Consider deprecation period — symbol is public and has callers".to_string(),
-            );
+            change_hints
+                .push("Consider deprecation period — symbol is public and has callers".to_string());
         }
         let has_method_call = direct_callers
             .iter()
@@ -317,10 +314,7 @@ pub fn scope(graph: &CodeGraph, target: &str, kind: ScopeKind) -> Result<Value> 
                         .filter(|n| n.kind == NodeKind::File)
                         .map(|n| n.name.as_str())
                         .collect();
-                    format!(
-                        "file `{target}` not found{}",
-                        suggest(target, &files, 3)
-                    )
+                    format!("file `{target}` not found{}", suggest(target, &files, 3))
                 })?;
             // Follow module_file edge to get the module, then get its declares
             let declares = index
@@ -350,10 +344,7 @@ pub fn scope(graph: &CodeGraph, target: &str, kind: ScopeKind) -> Result<Value> 
                     .filter(|n| n.kind == NodeKind::Module)
                     .map(|n| n.name.as_str())
                     .collect();
-                format!(
-                    "module `{target}` not found{}",
-                    suggest(target, &mods, 3)
-                )
+                format!("module `{target}` not found{}", suggest(target, &mods, 3))
             })?;
             Ok(json!({
                 "kind": "scope",

@@ -62,6 +62,18 @@ pub enum NodeKind {
     Property,
     Decorator,
     Import,
+    Enum,
+    NamedTuple,
+    DataType,
+    TypeAlias,
+    Protocol,
+    ABC,
+    Generator,
+    Dunder,
+    Constructor,
+    ClassVariable,
+    InstanceVariable,
+    Constant,
     Unknown,
 }
 
@@ -84,6 +96,18 @@ impl NodeKind {
             Self::Property => "property",
             Self::Decorator => "decorator",
             Self::Import => "import",
+            Self::Enum => "enum",
+            Self::NamedTuple => "named_tuple",
+            Self::DataType => "data_type",
+            Self::TypeAlias => "type_alias",
+            Self::Protocol => "protocol",
+            Self::ABC => "abc",
+            Self::Generator => "generator",
+            Self::Dunder => "dunder",
+            Self::Constructor => "constructor",
+            Self::ClassVariable => "class_variable",
+            Self::InstanceVariable => "instance_variable",
+            Self::Constant => "constant",
             Self::Unknown => "unknown",
         }
     }
@@ -116,6 +140,14 @@ pub enum EdgeKind {
     InheritsFrom,
     UsesType,
     ModuleFile,
+    AwaitCalls,
+    Decorates,
+    FromImports,
+    Overrides,
+    Implements,
+    Returns,
+    Mixin,
+    Describes,
 }
 
 impl EdgeKind {
@@ -130,6 +162,14 @@ impl EdgeKind {
             Self::InheritsFrom => "inherits_from",
             Self::UsesType => "uses_type",
             Self::ModuleFile => "module_file",
+            Self::AwaitCalls => "await_calls",
+            Self::Decorates => "decorates",
+            Self::FromImports => "from_imports",
+            Self::Overrides => "overrides",
+            Self::Implements => "implements",
+            Self::Returns => "returns",
+            Self::Mixin => "mixin",
+            Self::Describes => "describes",
         }
     }
 }
@@ -243,9 +283,7 @@ impl CodeGraph {
             symbols: self
                 .nodes
                 .iter()
-                .filter(|node| {
-                    !matches!(node.kind, NodeKind::Project | NodeKind::File)
-                })
+                .filter(|node| !matches!(node.kind, NodeKind::Project | NodeKind::File))
                 .count(),
             warnings: self.warnings.len(),
         }

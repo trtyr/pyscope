@@ -7,7 +7,11 @@ use super::embedding::{embed_nodes, embed_query};
 use super::lexical::lexical_search;
 use super::{ScoredNode, embedding_enabled, node_json};
 
-pub fn rerank(embedded_query: &[f32], nodes: &[(Node, Vec<f32>)], limit: usize) -> Vec<(Node, f32)> {
+pub fn rerank(
+    embedded_query: &[f32],
+    nodes: &[(Node, Vec<f32>)],
+    limit: usize,
+) -> Vec<(Node, f32)> {
     let mut items = nodes
         .iter()
         .map(|(node, vector)| (node.clone(), cosine_similarity(embedded_query, vector)))
@@ -37,7 +41,10 @@ pub fn hybrid_search(graph: &CodeGraph, query: &str, limit: usize) -> Result<Val
 
     let embedding_key = config.embedding_key.as_deref().unwrap_or_default();
     let embedded_query = embed_query(embedding_key, &config.embedding_model, query)?;
-    let lexical_nodes = lexical.into_iter().map(|item| item.node).collect::<Vec<_>>();
+    let lexical_nodes = lexical
+        .into_iter()
+        .map(|item| item.node)
+        .collect::<Vec<_>>();
     let embedded_nodes = embed_nodes(embedding_key, &config.embedding_model, &lexical_nodes)?;
     let reranked = rerank(&embedded_query, &embedded_nodes, limit);
 

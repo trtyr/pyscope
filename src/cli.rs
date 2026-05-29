@@ -1,8 +1,12 @@
-use clap::{Parser, Subcommand, Args};
+use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "pyscope", version, about = "Python code satellite map — index, query, and navigate your codebase")]
+#[command(
+    name = "pyscope",
+    version,
+    about = "Python code satellite map — index, query, and navigate your codebase"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -26,6 +30,36 @@ pub enum Command {
     /// Configure API keys and model settings
     #[command(subcommand)]
     Config(ConfigCmd),
+    /// CI/CD integration checks
+    #[command(subcommand)]
+    Ci(CiCmd),
+}
+
+// ---- CI ----
+
+#[derive(Subcommand)]
+pub enum CiCmd {
+    /// Run architecture health checks and fail when thresholds are breached
+    Check(CiCheckArgs),
+}
+
+#[derive(Args)]
+pub struct CiCheckArgs {
+    /// Minimum architecture health score
+    #[arg(long)]
+    pub min_health: Option<u8>,
+    /// Maximum allowed dependency cycles
+    #[arg(long)]
+    pub max_cycles: Option<usize>,
+    /// Maximum allowed god modules
+    #[arg(long)]
+    pub max_god_modules: Option<usize>,
+    /// Maximum allowed dead public code symbols
+    #[arg(long)]
+    pub max_dead_code: Option<usize>,
+    /// Graph file to check
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
 }
 
 // ---- Index ----
@@ -108,6 +142,8 @@ pub enum QueryCmd {
     Symbols(SymbolsArgs),
     /// Full dependency impact analysis
     Impact(ImpactArgs),
+    /// Risk assessment for changing a symbol
+    Risk(RiskArgs),
 }
 
 #[derive(Args)]
@@ -232,6 +268,18 @@ pub struct SymbolsArgs {
     /// Only show symbols called exclusively from test files
     #[arg(long)]
     pub test_only: bool,
+    /// Only show symbols using dynamic Python features
+    #[arg(long)]
+    pub dynamic: bool,
+    /// Only show legacy code patterns
+    #[arg(long)]
+    pub legacy: bool,
+    /// Only show async functions and methods
+    #[arg(long)]
+    pub async_only: bool,
+    /// Filter by decorator name
+    #[arg(long)]
+    pub decorator: Option<String>,
     /// Minimum number of unique callers
     #[arg(long)]
     pub min_callers: Option<usize>,
@@ -264,12 +312,35 @@ pub struct ImpactArgs {
     pub graph: Option<PathBuf>,
 }
 
+#[derive(Args)]
+pub struct RiskArgs {
+    /// Symbol name
+    pub name: String,
+    /// Maximum traversal depth
+    #[arg(long, default_value = "3")]
+    pub depth: usize,
+    /// Maximum results
+    #[arg(long, default_value = "100")]
+    pub limit: usize,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
 // ---- Nav ----
 
 #[derive(Subcommand)]
 pub enum NavCmd {
     /// Token-budgeted project overview for AI agents
     Map(MapArgs),
+    /// Entry points with short downstream call chains
+    Guide(GuideArgs),
+    /// Detected code entry points
+    Entries(EntriesArgs),
+    /// Functional symbol clusters by directory
+    Clusters(ClustersArgs),
+    /// Code graph quality metrics
+    Quality(QualityArgs),
     /// Ask the LLM a question about the codebase
     Ask(AskArgs),
     /// Retrieve relevant nodes using lexical and optional embedding search
@@ -288,6 +359,43 @@ pub struct MapArgs {
     /// Token budget for the map content
     #[arg(long, default_value = "8000")]
     pub budget: usize,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct GuideArgs {
+    /// Maximum entry points to include
+    #[arg(long, default_value = "20")]
+    pub limit: usize,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct EntriesArgs {
+    /// Maximum entry points to include
+    #[arg(long, default_value = "50")]
+    pub limit: usize,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct ClustersArgs {
+    /// Maximum clusters to include
+    #[arg(long, default_value = "30")]
+    pub limit: usize,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct QualityArgs {
     /// Graph file to query
     #[arg(long)]
     pub graph: Option<PathBuf>,
@@ -341,6 +449,18 @@ pub enum AnalyzeCmd {
     Fanout(FanoutArgs),
     /// Test impact analysis: which tests to run
     Tests(TestsArgs),
+    /// Git hotspot analysis for frequently changed files
+    Hotspots(HotspotsArgs),
+    /// Simplified graph diff for changed files
+    Diff(DiffArgs),
+    /// Compute a safe module refactor order
+    RefactorOrder(RefactorOrderArgs),
+    /// Measure type annotation coverage
+    TypeCoverage(TypeCoverageArgs),
+    /// Map async callsites and sync calls
+    AsyncMap(AsyncMapArgs),
+    /// Analyze decorator usage patterns
+    DecoratorUsage(DecoratorUsageArgs),
 }
 
 #[derive(Args)]
@@ -372,6 +492,78 @@ pub struct TestsArgs {
     pub symbol: Option<String>,
     /// Maximum test candidates
     #[arg(long, default_value = "20")]
+    pub limit: usize,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct HotspotsArgs {
+    /// Maximum hotspot results
+    #[arg(long, default_value = "20")]
+    pub limit: usize,
+    /// Git history period expression, e.g. "6 months ago"
+    #[arg(long)]
+    pub since: Option<String>,
+    /// Override project root used for git commands
+    #[arg(long)]
+    pub project_root: Option<PathBuf>,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct DiffArgs {
+    /// Git base ref to diff against
+    #[arg(long, default_value = "HEAD")]
+    pub base: String,
+    /// Override project root used for git commands
+    #[arg(long)]
+    pub project_root: Option<PathBuf>,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct RefactorOrderArgs {
+    /// Target modules to order for refactoring
+    #[arg(required = true)]
+    pub modules: Vec<String>,
+    /// Maximum modules to emit in the ordered plan
+    #[arg(long, default_value = "50")]
+    pub limit: usize,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct TypeCoverageArgs {
+    /// Maximum untyped functions to return
+    #[arg(long, default_value = "50")]
+    pub limit: usize,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct AsyncMapArgs {
+    /// Maximum rows to return per list
+    #[arg(long, default_value = "50")]
+    pub limit: usize,
+    /// Graph file to query
+    #[arg(long)]
+    pub graph: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct DecoratorUsageArgs {
+    /// Maximum decorators to return
+    #[arg(long, default_value = "50")]
     pub limit: usize,
     /// Graph file to query
     #[arg(long)]

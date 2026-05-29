@@ -65,16 +65,11 @@ pub fn visibility(name: &str) -> Option<String> {
 /// - `/project/pkg/module.py` → `pkg.module`
 /// - `/project/pkg/__init__.py` → `pkg`
 pub fn module_name(file_path: &Path, project_root: &Path) -> String {
-    let relative = file_path
-        .strip_prefix(project_root)
-        .unwrap_or(file_path);
+    let relative = file_path.strip_prefix(project_root).unwrap_or(file_path);
 
     let without_ext = relative.with_extension("");
 
-    let effective = if without_ext
-        .file_name()
-        .map_or(false, |f| f == "__init__")
-    {
+    let effective = if without_ext.file_name().map_or(false, |f| f == "__init__") {
         // __init__.py represents the package itself — use parent directory
         match without_ext.parent() {
             Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),

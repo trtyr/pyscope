@@ -3,7 +3,6 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 pub fn fanout(graph: &CodeGraph, limit: usize) -> Value {
-
     // 1. Build maps: for each file node, count incoming and outgoing edges
     let file_nodes: Vec<&crate::model::Node> = graph
         .nodes
@@ -28,10 +27,14 @@ pub fn fanout(graph: &CodeGraph, limit: usize) -> Value {
             let fid = n.file.as_ref().and_then(|_| {
                 // Find the file node that owns this node
                 // A node's file field contains the path; match it to a File node
-                graph.nodes.iter().find(|fnode| {
-                    fnode.kind == NodeKind::File
-                        && n.file.as_deref() == Some(fnode.name.as_str())
-                }).map(|f| f.id.as_str())
+                graph
+                    .nodes
+                    .iter()
+                    .find(|fnode| {
+                        fnode.kind == NodeKind::File
+                            && n.file.as_deref() == Some(fnode.name.as_str())
+                    })
+                    .map(|f| f.id.as_str())
             });
             fid.map(|f| (n.id.as_str(), f))
         })

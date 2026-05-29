@@ -1,8 +1,8 @@
 use crate::model::{CodeGraph, NodeKind, Project};
 use anyhow::{Context, Result};
+use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
-use flate2::Compression;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -109,11 +109,7 @@ fn discover_graphs() -> Option<Vec<PathBuf>> {
         .collect();
     files.sort();
     files.dedup();
-    if files.is_empty() {
-        None
-    } else {
-        Some(files)
-    }
+    if files.is_empty() { None } else { Some(files) }
 }
 
 #[allow(dead_code)]

@@ -1,4 +1,4 @@
-use crate::model::{CodeGraph, EdgeKind, EdgeSource, EdgeCertainty, NodeKind};
+use crate::model::{CodeGraph, EdgeCertainty, EdgeKind, EdgeSource, NodeKind};
 use crate::query::index::QueryIndex;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -25,8 +25,6 @@ fn truncate(s: &str, max: usize) -> String {
     }
     format!("{}...", &s[..end])
 }
-
-
 
 /// Computes a 0-100 architecture health score.
 pub fn health(graph: &CodeGraph, limit: usize) -> Value {
@@ -124,10 +122,7 @@ pub fn health(graph: &CodeGraph, limit: usize) -> Value {
         }
         all_modules.insert(from_mod.clone());
         all_modules.insert(to_mod.clone());
-        module_deps
-            .entry(from_mod)
-            .or_default()
-            .insert(to_mod);
+        module_deps.entry(from_mod).or_default().insert(to_mod);
     }
 
     // BFS cycle detection up to depth 6

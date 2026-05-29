@@ -88,8 +88,7 @@ impl Builder {
         self.nodes.push(node);
 
         // Index by qualified name (latest wins — shadows previous)
-        self.by_qname
-            .insert(qualified_name.to_string(), id.clone());
+        self.by_qname.insert(qualified_name.to_string(), id.clone());
 
         // Index by short name
         self.by_name
@@ -350,9 +349,36 @@ mod tests {
     #[test]
     fn test_edge_creation() {
         let mut b = Builder::new();
-        b.add_node(NodeKind::Function, "a", "mod.a", None, 1, 1, None, None, None);
-        b.add_node(NodeKind::Function, "b", "mod.b", None, 5, 5, None, None, None);
-        b.edge("function:mod.a", "function:mod.b", EdgeKind::Calls, None, None, None);
+        b.add_node(
+            NodeKind::Function,
+            "a",
+            "mod.a",
+            None,
+            1,
+            1,
+            None,
+            None,
+            None,
+        );
+        b.add_node(
+            NodeKind::Function,
+            "b",
+            "mod.b",
+            None,
+            5,
+            5,
+            None,
+            None,
+            None,
+        );
+        b.edge(
+            "function:mod.a",
+            "function:mod.b",
+            EdgeKind::Calls,
+            None,
+            None,
+            None,
+        );
         assert_eq!(b.edges.len(), 1);
         assert_eq!(b.edges[0].from, "function:mod.a");
         assert_eq!(b.edges[0].to, "function:mod.b");
@@ -364,8 +390,28 @@ mod tests {
     #[test]
     fn test_resolve_pending_found() {
         let mut b = Builder::new();
-        b.add_node(NodeKind::Function, "caller", "mod.caller", None, 1, 1, None, None, None);
-        b.add_node(NodeKind::Function, "callee", "mod.callee", None, 10, 10, None, None, None);
+        b.add_node(
+            NodeKind::Function,
+            "caller",
+            "mod.caller",
+            None,
+            1,
+            1,
+            None,
+            None,
+            None,
+        );
+        b.add_node(
+            NodeKind::Function,
+            "callee",
+            "mod.callee",
+            None,
+            10,
+            10,
+            None,
+            None,
+            None,
+        );
         b.add_pending(
             "function:mod.caller",
             "mod.callee",
@@ -382,9 +428,39 @@ mod tests {
     #[test]
     fn test_resolve_pending_ambiguous() {
         let mut b = Builder::new();
-        b.add_node(NodeKind::Function, "caller", "mod.caller", None, 1, 1, None, None, None);
-        b.add_node(NodeKind::Function, "foo", "a.foo", None, 10, 10, None, None, None);
-        b.add_node(NodeKind::Function, "foo", "b.foo", None, 20, 20, None, None, None);
+        b.add_node(
+            NodeKind::Function,
+            "caller",
+            "mod.caller",
+            None,
+            1,
+            1,
+            None,
+            None,
+            None,
+        );
+        b.add_node(
+            NodeKind::Function,
+            "foo",
+            "a.foo",
+            None,
+            10,
+            10,
+            None,
+            None,
+            None,
+        );
+        b.add_node(
+            NodeKind::Function,
+            "foo",
+            "b.foo",
+            None,
+            20,
+            20,
+            None,
+            None,
+            None,
+        );
         b.add_pending("function:mod.caller", "foo", EdgeKind::Calls, None, None);
         b.resolve_pending();
         assert!(b.pending.is_empty());
@@ -396,7 +472,17 @@ mod tests {
     #[test]
     fn test_resolve_pending_not_found() {
         let mut b = Builder::new();
-        b.add_node(NodeKind::Function, "caller", "mod.caller", None, 1, 1, None, None, None);
+        b.add_node(
+            NodeKind::Function,
+            "caller",
+            "mod.caller",
+            None,
+            1,
+            1,
+            None,
+            None,
+            None,
+        );
         b.add_pending(
             "function:mod.caller",
             "nonexistent",
@@ -413,7 +499,17 @@ mod tests {
     #[test]
     fn test_find_node_id() {
         let mut b = Builder::new();
-        b.add_node(NodeKind::Class, "MyClass", "pkg.MyClass", None, 1, 50, None, None, None);
+        b.add_node(
+            NodeKind::Class,
+            "MyClass",
+            "pkg.MyClass",
+            None,
+            1,
+            50,
+            None,
+            None,
+            None,
+        );
         assert!(b.find_node_id("pkg.MyClass").is_some());
         assert!(b.find_node_id("other").is_none());
     }

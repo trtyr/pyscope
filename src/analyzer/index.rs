@@ -34,11 +34,9 @@ pub fn index_project(project: &Path, include_tests: bool) -> Result<CodeGraph> {
 
     for file_path in &py_files {
         if let Err(e) = index_file(&mut builder, file_path, &root) {
-            builder.warnings.push(format!(
-                "Failed to index {}: {}",
-                file_path.display(),
-                e
-            ));
+            builder
+                .warnings
+                .push(format!("Failed to index {}: {}", file_path.display(), e));
         }
     }
 
@@ -57,10 +55,7 @@ pub fn index_project(project: &Path, include_tests: bool) -> Result<CodeGraph> {
             packages: vec![Package {
                 name: detect_package_name(&root),
                 root: root.display().to_string(),
-                files: py_files
-                    .iter()
-                    .map(|p| p.display().to_string())
-                    .collect(),
+                files: py_files.iter().map(|p| p.display().to_string()).collect(),
             }],
         },
         nodes: builder.nodes,

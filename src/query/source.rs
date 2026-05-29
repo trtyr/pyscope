@@ -36,8 +36,8 @@ pub fn source(graph: &CodeGraph, name: &str) -> Result<Value> {
         .as_ref()
         .with_context(|| format!("symbol `{name}` has no source range"))?;
 
-    let content = fs::read_to_string(file)
-        .with_context(|| format!("failed to read source file `{file}`"))?;
+    let content =
+        fs::read_to_string(file).with_context(|| format!("failed to read source file `{file}`"))?;
     let lines: Vec<&str> = content.lines().collect();
     let start = range.start_line.saturating_sub(1);
     let end = range.end_line.min(lines.len());

@@ -6,6 +6,10 @@
 - Architecture plan (baseline/module-map.md)
 - AI/LLM integration: `src/config.rs`, `src/llm.rs`, `src/rag/*`, `nav ask`, `nav retrieve`, and `config` subcommands
 - Verification gate: `cargo check` passes after AI/LLM integration
+- Analyze CLI expansion: `analyze hotspots`, `analyze diff`, and `analyze refactor-order` now wired through `src/cli.rs`, `src/main.rs`, and `src/analyze/*`
+- Navigation surface expansion: `nav guide`, `nav entries`, `nav clusters`, and `nav quality`
+- Analyze surface expansion: `analyze type-coverage`, `analyze async-map`, and `analyze decorator-usage`
+- CI/CD integration: `ci check` runs architecture health thresholds and exits non-zero on failure
 
 ## In Progress
 

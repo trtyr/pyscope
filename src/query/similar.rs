@@ -58,10 +58,7 @@ pub fn similar(graph: &CodeGraph, name: &str, limit: usize) -> Value {
                 .filter(|e| e.from == node.id && e.kind == EdgeKind::Calls)
                 .map(|e| e.to.as_str())
                 .collect();
-            let callee_overlap = target_callees
-                .intersection(&candidate_callees)
-                .count()
-                * 3;
+            let callee_overlap = target_callees.intersection(&candidate_callees).count() * 3;
 
             // Signature keyword overlap
             let candidate_sig_words: std::collections::HashSet<&str> = node

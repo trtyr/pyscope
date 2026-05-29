@@ -54,7 +54,8 @@ pub fn enrich(graph: &mut CodeGraph, project: &Path, limit: usize) -> Result<Sem
 
     if let Err(error) = initialize(&mut server, &root) {
         info.enabled = false;
-        info.warnings.push(format!("semantic initialize failed: {error:#}"));
+        info.warnings
+            .push(format!("semantic initialize failed: {error:#}"));
         let _ = server.kill();
         let _ = server.wait();
         return Ok(info);
@@ -99,8 +100,10 @@ pub fn enrich(graph: &mut CodeGraph, project: &Path, limit: usize) -> Result<Sem
             Ok(source) => source,
             Err(error) => {
                 info.unresolved_items += 1;
-                info.warnings
-                    .push(format!("semantic read failed for {}: {error}", abs_file.display()));
+                info.warnings.push(format!(
+                    "semantic read failed for {}: {error}",
+                    abs_file.display()
+                ));
                 continue;
             }
         };
@@ -164,7 +167,8 @@ pub fn enrich(graph: &mut CodeGraph, project: &Path, limit: usize) -> Result<Sem
     }
 
     if let Err(error) = shutdown(&mut server, &mut ids) {
-        info.warnings.push(format!("semantic shutdown failed: {error:#}"));
+        info.warnings
+            .push(format!("semantic shutdown failed: {error:#}"));
     }
 
     Ok(info)
@@ -262,7 +266,10 @@ fn maybe_enrich_hover(
             .nodes
             .get_mut(node_index)
             .context("semantic hover target index out of bounds")?;
-        let already_has_type = node.signature.as_deref().is_some_and(|sig| sig.contains(&ty));
+        let already_has_type = node
+            .signature
+            .as_deref()
+            .is_some_and(|sig| sig.contains(&ty));
         if !already_has_type {
             let updated = match node.signature.take() {
                 Some(existing) if !existing.trim().is_empty() => {

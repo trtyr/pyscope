@@ -84,9 +84,7 @@ pub fn deps(graph: &CodeGraph, from: Option<&str>, limit: usize) -> Value {
         }
         all_clusters.insert(src_cluster.clone());
         all_clusters.insert(dst_cluster.clone());
-        *weight_map
-            .entry((src_cluster, dst_cluster))
-            .or_insert(0) += 1;
+        *weight_map.entry((src_cluster, dst_cluster)).or_insert(0) += 1;
     }
 
     // 2. Filter by `from` if specified
@@ -103,9 +101,7 @@ pub fn deps(graph: &CodeGraph, from: Option<&str>, limit: usize) -> Value {
     // 3. Sort by weight desc, take top `limit`
     let mut items: Vec<Value> = filtered
         .into_iter()
-        .map(|((from, to), weight)| {
-            json!({ "from": from, "to": to, "weight": weight })
-        })
+        .map(|((from, to), weight)| json!({ "from": from, "to": to, "weight": weight }))
         .collect();
     items.sort_by(|a, b| {
         b["weight"]
@@ -142,9 +138,7 @@ pub fn deps(graph: &CodeGraph, from: Option<&str>, limit: usize) -> Value {
         *full_weight
             .entry((src_cluster.clone(), dst_cluster.clone()))
             .or_insert(0) += 1;
-        adj.entry(src_cluster)
-            .or_default()
-            .insert(dst_cluster);
+        adj.entry(src_cluster).or_default().insert(dst_cluster);
     }
 
     // recompile_impact: module pairs where BFS chain length >= 3

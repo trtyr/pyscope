@@ -1,11 +1,15 @@
-use crate::model::{EdgeKind, Node, NodeKind};
 use super::index::QueryIndex;
+use crate::model::{EdgeKind, Node, NodeKind};
 
 pub struct SymbolFilter {
     pub visibility: Option<String>,
     pub no_docs: bool,
     pub dead: bool,
     pub test_only: bool,
+    pub dynamic: bool,
+    pub legacy: bool,
+    pub async_only: bool,
+    pub decorator: Option<String>,
     pub min_callers: Option<usize>,
     pub max_callers: Option<usize>,
     pub min_degree: Option<usize>,
@@ -24,10 +28,7 @@ impl SymbolFilter {
 
         // no_docs: docs is None or empty
         if self.no_docs {
-            let has_docs = node
-                .docs
-                .as_deref()
-                .is_some_and(|d| !d.trim().is_empty());
+            let has_docs = node.docs.as_deref().is_some_and(|d| !d.trim().is_empty());
             if has_docs {
                 return false;
             }
@@ -74,6 +75,29 @@ impl SymbolFilter {
                     .is_some_and(|f| f.contains("test"))
             });
             if !all_from_tests {
+                return false;
+            }
+        }
+
+        // dynamic: known dynamic feature names, importlib usage, or type(...) signatures
+        if self.dynamic && !uses_dynamic_features(node) {
+            return false;
+        }
+
+        // legacy: public Function/Method/Class nodes with no signature metadata
+        if self.legacy && !is_legacy_symbol(node) {
+            return false;
+        }
+
+        // async_only: async functions and async methods
+        if self.async_only && !matches!(node.kind, NodeKind::AsyncFunction | NodeKind::AsyncMethod)
+        {
+            return false;
+        }
+
+        // decorator: decorated nodes whose decorator name contains the requested text
+        if let Some(ref decorator) = self.decorator {
+            if !has_matching_decorator(node, index, decorator) {
                 return false;
             }
         }
@@ -130,6 +154,18 @@ impl SymbolFilter {
         if self.test_only {
             desc.push("test_only".to_string());
         }
+        if self.dynamic {
+            desc.push("dynamic".to_string());
+        }
+        if self.legacy {
+            desc.push("legacy".to_string());
+        }
+        if self.async_only {
+            desc.push("async_only".to_string());
+        }
+        if let Some(ref decorator) = self.decorator {
+            desc.push(format!("decorator={decorator}"));
+        }
         if let Some(min) = self.min_callers {
             desc.push(format!("min_callers={min}"));
         }
@@ -144,4 +180,41 @@ impl SymbolFilter {
         }
         desc
     }
+}
+
+fn uses_dynamic_features(node: &Node) -> bool {
+    matches!(
+        node.name.as_str(),
+        "eval" | "exec" | "globals" | "locals" | "__getattr__" | "__setattr__" | "__delattr__"
+    ) || node.qualified_name.contains("importlib")
+        || node
+            .signature
+            .as_deref()
+            .is_some_and(|sig| sig.contains("type("))
+}
+
+fn is_legacy_symbol(node: &Node) -> bool {
+    matches!(node.visibility.as_deref(), None | Some("public"))
+        && node.signature.is_none()
+        && matches!(
+            node.kind,
+            NodeKind::Function | NodeKind::Method | NodeKind::Class
+        )
+}
+
+fn has_matching_decorator(node: &Node, index: &QueryIndex, decorator: &str) -> bool {
+    let matches_decorator = |decorator_node: &Node| decorator_node.name.contains(decorator);
+
+    index
+        .edges(&node.id, true)
+        .iter()
+        .filter(|edge| edge.kind == EdgeKind::Decorates)
+        .filter_map(|edge| index.node(&edge.to))
+        .any(matches_decorator)
+        || index
+            .edges(&node.id, false)
+            .iter()
+            .filter(|edge| edge.kind == EdgeKind::Decorates)
+            .filter_map(|edge| index.node(&edge.from))
+            .any(matches_decorator)
 }

@@ -2,7 +2,8 @@ use crate::analyzer::builder::Builder;
 use crate::analyzer::helpers;
 use crate::model::*;
 use rustpython_parser::ast::*;
-use rustpython_parser::{parse, Mode};
+use rustpython_parser::{Mode, parse};
+use std::collections::BTreeSet;
 use std::path::Path;
 
 /// Visit a single Python file and populate the builder with nodes and edges.
@@ -66,7 +67,14 @@ pub fn visit_file(
     Ok(())
 }
 
-fn visit_stmt(builder: &mut Builder, stmt: &Stmt, source: &str, file: &str, parent_qname: &str, module_id: &str) {
+fn visit_stmt(
+    builder: &mut Builder,
+    stmt: &Stmt,
+    source: &str,
+    file: &str,
+    parent_qname: &str,
+    module_id: &str,
+) {
     match stmt {
         Stmt::FunctionDef(fd) => {
             let name = fd.name.to_string();
@@ -76,9 +84,17 @@ fn visit_stmt(builder: &mut Builder, stmt: &Stmt, source: &str, file: &str, pare
             let vis = helpers::visibility(&name);
             let start_line = helpers::offset_line(source, fd.range.start().to_usize());
             let end_line = helpers::find_block_end(source, start_line);
+            let kind = classify_callable_kind(&name, &fd.body, NodeKind::Function);
             let func_id = builder.add_node(
-                NodeKind::Function, &name, &qname, Some(file),
-                start_line, end_line, vis.as_deref(), Some(&sig), docs.as_deref(),
+                kind,
+                &name,
+                &qname,
+                Some(file),
+                start_line,
+                end_line,
+                vis.as_deref(),
+                Some(&sig),
+                docs.as_deref(),
             );
             builder.edge(module_id, &func_id, EdgeKind::Declares, None, None, None);
             visit_body_calls(builder, &fd.body, source, file, &func_id);
@@ -92,9 +108,17 @@ fn visit_stmt(builder: &mut Builder, stmt: &Stmt, source: &str, file: &str, pare
             let vis = helpers::visibility(&name);
             let start_line = helpers::offset_line(source, fd.range.start().to_usize());
             let end_line = helpers::find_block_end(source, start_line);
+            let kind = classify_callable_kind(&name, &fd.body, NodeKind::AsyncFunction);
             let func_id = builder.add_node(
-                NodeKind::AsyncFunction, &name, &qname, Some(file),
-                start_line, end_line, vis.as_deref(), Some(&sig), docs.as_deref(),
+                kind,
+                &name,
+                &qname,
+                Some(file),
+                start_line,
+                end_line,
+                vis.as_deref(),
+                Some(&sig),
+                docs.as_deref(),
             );
             builder.edge(module_id, &func_id, EdgeKind::Declares, None, None, None);
             visit_body_calls(builder, &fd.body, source, file, &func_id);
@@ -102,16 +126,26 @@ fn visit_stmt(builder: &mut Builder, stmt: &Stmt, source: &str, file: &str, pare
         }
         Stmt::ClassDef(cd) => visit_class(builder, cd, source, file, parent_qname, module_id),
         Stmt::Import(imp) => visit_import(builder, imp, source, file, parent_qname, module_id),
-        Stmt::ImportFrom(impf) => visit_import_from(builder, impf, source, file, parent_qname, module_id),
-        Stmt::Assign(assign) => visit_assign(builder, assign, source, file, parent_qname, module_id),
+        Stmt::ImportFrom(impf) => {
+            visit_import_from(builder, impf, source, file, parent_qname, module_id)
+        }
+        Stmt::Assign(assign) => {
+            visit_assign(builder, assign, source, file, parent_qname, module_id)
+        }
         Stmt::AnnAssign(ann) => {
             if let Expr::Name(name) = ann.target.as_ref() {
                 let qname = format!("{}.{}", parent_qname, name.id.to_string());
                 let line = helpers::offset_line(source, ann.range.start().to_usize());
                 let var_id = builder.add_node(
-                    NodeKind::Variable, &name.id.to_string(), &qname, Some(file),
-                    line, line, helpers::visibility(&name.id.to_string()).as_deref(),
-                    None, None,
+                    NodeKind::Variable,
+                    &name.id.to_string(),
+                    &qname,
+                    Some(file),
+                    line,
+                    line,
+                    helpers::visibility(&name.id.to_string()).as_deref(),
+                    None,
+                    None,
                 );
                 builder.edge(module_id, &var_id, EdgeKind::Declares, None, None, None);
             }
@@ -129,14 +163,22 @@ fn visit_decorators(
     target_id: &str,
 ) {
     for dec in decorators {
-        if let Some(dec_name) = extract_name(dec) {
+        if let Some(dec_name) = extract_qualified_name(dec).or_else(|| extract_name(dec)) {
             let dec_qname = format!("{}.@{}", parent_qname, dec_name);
             let dec_line = helpers::offset_line(source, dec.range().start().to_usize());
             let dec_id = builder.add_node(
-                NodeKind::Decorator, &dec_name, &dec_qname, Some(file),
-                dec_line, dec_line, None, None, None,
+                NodeKind::Decorator,
+                &dec_name,
+                &dec_qname,
+                Some(file),
+                dec_line,
+                dec_line,
+                None,
+                None,
+                None,
             );
             builder.edge(target_id, &dec_id, EdgeKind::Declares, None, None, None);
+            builder.edge(target_id, &dec_id, EdgeKind::Decorates, None, None, None);
         }
     }
 }
@@ -157,19 +199,36 @@ fn visit_class(
     let vis = helpers::visibility(&name);
     let start_line = helpers::offset_line(source, cd.range.start().to_usize());
     let end_line = helpers::find_block_end(source, start_line);
+    let kind = classify_class(cd);
 
     let class_id = builder.add_node(
-        NodeKind::Class, &name, &qname, Some(file),
-        start_line, end_line, vis.as_deref(), None, docs.as_deref(),
+        kind,
+        &name,
+        &qname,
+        Some(file),
+        start_line,
+        end_line,
+        vis.as_deref(),
+        None,
+        docs.as_deref(),
     );
 
     builder.edge(module_id, &class_id, EdgeKind::Declares, None, None, None);
+    visit_decorators(builder, &cd.decorator_list, source, file, &qname, &class_id);
 
     // Inheritance
+    let mut base_names = Vec::new();
     for base in &cd.bases {
-        if let Some(base_name) = extract_name(base) {
+        if let Some(base_name) = extract_qualified_name(base).or_else(|| extract_name(base)) {
             let loc = helpers::location(file, source, base.range().start().to_usize());
-            builder.add_pending(&class_id, &base_name, EdgeKind::InheritsFrom, Some(loc), None);
+            builder.add_pending(
+                &class_id,
+                &base_name,
+                EdgeKind::InheritsFrom,
+                Some(loc),
+                None,
+            );
+            base_names.push(base_name);
         }
     }
 
@@ -177,8 +236,30 @@ fn visit_class(
     for stmt in &cd.body {
         match stmt {
             Stmt::FunctionDef(fd) => {
-                let (method_kind, _) = classify_method(fd);
-                visit_method(builder, fd, source, file, &qname, &class_id, method_kind);
+                let method_kind = classify_method(fd);
+                visit_method(
+                    builder,
+                    fd,
+                    source,
+                    file,
+                    &qname,
+                    &class_id,
+                    &base_names,
+                    method_kind,
+                );
+            }
+            Stmt::AsyncFunctionDef(fd) => {
+                let method_kind = classify_async_method(fd);
+                visit_async_method(
+                    builder,
+                    fd,
+                    source,
+                    file,
+                    &qname,
+                    &class_id,
+                    &base_names,
+                    method_kind,
+                );
             }
             Stmt::Assign(assign) => {
                 for target in &assign.targets {
@@ -187,8 +268,15 @@ fn visit_class(
                         let var_qname = format!("{}.{}", qname, n);
                         let line = helpers::offset_line(source, assign.range.start().to_usize());
                         let field_id = builder.add_node(
-                            NodeKind::Field, &n, &var_qname, Some(file),
-                            line, line, helpers::visibility(&n).as_deref(), None, None,
+                            classify_class_variable(&n),
+                            &n,
+                            &var_qname,
+                            Some(file),
+                            line,
+                            line,
+                            helpers::visibility(&n).as_deref(),
+                            None,
+                            None,
                         );
                         builder.edge(&class_id, &field_id, EdgeKind::HasField, None, None, None);
                     }
@@ -200,8 +288,15 @@ fn visit_class(
                     let var_qname = format!("{}.{}", qname, n);
                     let line = helpers::offset_line(source, ann.range.start().to_usize());
                     let field_id = builder.add_node(
-                        NodeKind::Field, &n, &var_qname, Some(file),
-                        line, line, helpers::visibility(&n).as_deref(), None, None,
+                        classify_class_variable(&n),
+                        &n,
+                        &var_qname,
+                        Some(file),
+                        line,
+                        line,
+                        helpers::visibility(&n).as_deref(),
+                        None,
+                        None,
                     );
                     builder.edge(&class_id, &field_id, EdgeKind::HasField, None, None, None);
                 }
@@ -211,18 +306,68 @@ fn visit_class(
     }
 }
 
-fn classify_method(fd: &StmtFunctionDef) -> (NodeKind, bool) {
+fn classify_method(fd: &StmtFunctionDef) -> NodeKind {
     for dec in &fd.decorator_list {
-        if let Expr::Name(name) = dec {
-            match name.id.to_string().as_str() {
-                "classmethod" => return (NodeKind::ClassMethod, false),
-                "staticmethod" => return (NodeKind::StaticMethod, false),
-                "property" => return (NodeKind::Property, false),
+        if let Some(name) = extract_name(dec) {
+            match name.as_str() {
+                "classmethod" => {
+                    return classify_callable_kind(
+                        &fd.name.to_string(),
+                        &fd.body,
+                        NodeKind::ClassMethod,
+                    );
+                }
+                "staticmethod" => {
+                    return classify_callable_kind(
+                        &fd.name.to_string(),
+                        &fd.body,
+                        NodeKind::StaticMethod,
+                    );
+                }
+                "property" => {
+                    return classify_callable_kind(
+                        &fd.name.to_string(),
+                        &fd.body,
+                        NodeKind::Property,
+                    );
+                }
                 _ => {}
             }
         }
     }
-    (NodeKind::Method, false)
+    classify_callable_kind(&fd.name.to_string(), &fd.body, NodeKind::Method)
+}
+
+fn classify_async_method(fd: &StmtAsyncFunctionDef) -> NodeKind {
+    for dec in &fd.decorator_list {
+        if let Some(name) = extract_name(dec) {
+            match name.as_str() {
+                "classmethod" => {
+                    return classify_callable_kind(
+                        &fd.name.to_string(),
+                        &fd.body,
+                        NodeKind::ClassMethod,
+                    );
+                }
+                "staticmethod" => {
+                    return classify_callable_kind(
+                        &fd.name.to_string(),
+                        &fd.body,
+                        NodeKind::StaticMethod,
+                    );
+                }
+                "property" => {
+                    return classify_callable_kind(
+                        &fd.name.to_string(),
+                        &fd.body,
+                        NodeKind::Property,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+    classify_callable_kind(&fd.name.to_string(), &fd.body, NodeKind::AsyncMethod)
 }
 
 fn visit_method(
@@ -232,6 +377,7 @@ fn visit_method(
     file: &str,
     class_qname: &str,
     class_id: &str,
+    base_names: &[String],
     kind: NodeKind,
 ) {
     let name = fd.name.to_string();
@@ -243,12 +389,97 @@ fn visit_method(
     let end_line = helpers::find_block_end(source, start_line);
 
     let method_id = builder.add_node(
-        kind, &name, &qname, Some(file),
-        start_line, end_line, vis.as_deref(), Some(&sig), docs.as_deref(),
+        kind,
+        &name,
+        &qname,
+        Some(file),
+        start_line,
+        end_line,
+        vis.as_deref(),
+        Some(&sig),
+        docs.as_deref(),
     );
 
     builder.edge(class_id, &method_id, EdgeKind::HasMethod, None, None, None);
     visit_body_calls(builder, &fd.body, source, file, &method_id);
+    visit_decorators(
+        builder,
+        &fd.decorator_list,
+        source,
+        file,
+        &qname,
+        &method_id,
+    );
+
+    if is_constructor(&name) {
+        visit_instance_variables(builder, &fd.body, source, file, class_qname, class_id);
+    }
+
+    maybe_add_override_edges(
+        builder,
+        &method_id,
+        &name,
+        base_names,
+        file,
+        source,
+        fd.range.start().to_usize(),
+    );
+}
+
+fn visit_async_method(
+    builder: &mut Builder,
+    fd: &StmtAsyncFunctionDef,
+    source: &str,
+    file: &str,
+    class_qname: &str,
+    class_id: &str,
+    base_names: &[String],
+    kind: NodeKind,
+) {
+    let name = fd.name.to_string();
+    let qname = format!("{}.{}", class_qname, name);
+    let sig = build_signature(&name, &fd.args, fd.returns.as_deref());
+    let docs = helpers::docstring(&fd.body);
+    let vis = helpers::visibility(&name);
+    let start_line = helpers::offset_line(source, fd.range.start().to_usize());
+    let end_line = helpers::find_block_end(source, start_line);
+
+    let method_id = builder.add_node(
+        kind,
+        &name,
+        &qname,
+        Some(file),
+        start_line,
+        end_line,
+        vis.as_deref(),
+        Some(&sig),
+        docs.as_deref(),
+    );
+
+    builder.edge(class_id, &method_id, EdgeKind::HasMethod, None, None, None);
+    visit_body_calls(builder, &fd.body, source, file, &method_id);
+    visit_decorators(
+        builder,
+        &fd.decorator_list,
+        source,
+        file,
+        &qname,
+        &method_id,
+    );
+
+    if is_constructor(&name) {
+        visit_instance_variables(builder, &fd.body, source, file, class_qname, class_id);
+    }
+
+    maybe_add_override_edges(
+        builder,
+        &method_id,
+        &name,
+        base_names,
+        file,
+        source,
+        fd.range.start().to_usize(),
+    );
 }
 
 // ---- Imports ----
@@ -266,15 +497,26 @@ fn visit_import(
         let qname = format!("{}.import.{}", parent_qname, import_name);
         let line = helpers::offset_line(source, imp.range.start().to_usize());
         let import_id = builder.add_node(
-            NodeKind::Import, &import_name, &qname, Some(file),
-            line, line, None, None, None,
+            NodeKind::Import,
+            &import_name,
+            &qname,
+            Some(file),
+            line,
+            line,
+            None,
+            None,
+            None,
         );
         builder.edge(module_id, &import_id, EdgeKind::Declares, None, None, None);
         builder.add_pending(
             &import_id,
             &alias.name.to_string(),
             EdgeKind::Imports,
-            Some(helpers::location(file, source, imp.range.start().to_usize())),
+            Some(helpers::location(
+                file,
+                source,
+                imp.range.start().to_usize(),
+            )),
             None,
         );
     }
@@ -288,7 +530,11 @@ fn visit_import_from(
     parent_qname: &str,
     module_id: &str,
 ) {
-    let module_prefix = impf.module.as_ref().map(|m| m.to_string()).unwrap_or_default();
+    let module_prefix = impf
+        .module
+        .as_ref()
+        .map(|m| m.to_string())
+        .unwrap_or_default();
     for alias in &impf.names {
         let import_name = alias.asname.as_ref().unwrap_or(&alias.name).to_string();
         let full_import = if module_prefix.is_empty() {
@@ -299,15 +545,26 @@ fn visit_import_from(
         let qname = format!("{}.import.{}", parent_qname, import_name);
         let line = helpers::offset_line(source, impf.range.start().to_usize());
         let import_id = builder.add_node(
-            NodeKind::Import, &import_name, &qname, Some(file),
-            line, line, None, None, None,
+            NodeKind::Import,
+            &import_name,
+            &qname,
+            Some(file),
+            line,
+            line,
+            None,
+            None,
+            None,
         );
         builder.edge(module_id, &import_id, EdgeKind::Declares, None, None, None);
         builder.add_pending(
             &import_id,
             &full_import,
-            EdgeKind::Imports,
-            Some(helpers::location(file, source, impf.range.start().to_usize())),
+            EdgeKind::FromImports,
+            Some(helpers::location(
+                file,
+                source,
+                impf.range.start().to_usize(),
+            )),
             None,
         );
     }
@@ -329,8 +586,15 @@ fn visit_assign(
             let qname = format!("{}.{}", parent_qname, n);
             let line = helpers::offset_line(source, assign.range.start().to_usize());
             let var_id = builder.add_node(
-                NodeKind::Variable, &n, &qname, Some(file),
-                line, line, helpers::visibility(&n).as_deref(), None, None,
+                NodeKind::Variable,
+                &n,
+                &qname,
+                Some(file),
+                line,
+                line,
+                helpers::visibility(&n).as_deref(),
+                None,
+                None,
             );
             builder.edge(module_id, &var_id, EdgeKind::Declares, None, None, None);
         }
@@ -387,13 +651,7 @@ fn visit_body_calls(
     }
 }
 
-fn visit_expr_calls(
-    builder: &mut Builder,
-    expr: &Expr,
-    source: &str,
-    file: &str,
-    caller_id: &str,
-) {
+fn visit_expr_calls(builder: &mut Builder, expr: &Expr, source: &str, file: &str, caller_id: &str) {
     match expr {
         Expr::Call(call) => {
             let loc = helpers::location(file, source, call.range.start().to_usize());
@@ -403,7 +661,7 @@ fn visit_expr_calls(
                         caller_id,
                         &name.id.to_string(),
                         EdgeKind::Calls,
-                        Some(loc),
+                        Some(loc.clone()),
                         Some("direct"),
                     );
                 }
@@ -412,14 +670,12 @@ fn visit_expr_calls(
                         caller_id,
                         &attr.attr.to_string(),
                         EdgeKind::Calls,
-                        Some(loc),
+                        Some(loc.clone()),
                         Some("method"),
                     );
                 }
                 _ => {
-                    builder.add_pending(
-                        caller_id, "?", EdgeKind::Calls, Some(loc), Some("direct"),
-                    );
+                    builder.add_pending(caller_id, "?", EdgeKind::Calls, Some(loc), Some("direct"));
                 }
             }
             for arg in &call.args {
@@ -427,6 +683,42 @@ fn visit_expr_calls(
             }
             for kw in &call.keywords {
                 visit_expr_calls(builder, &kw.value, source, file, caller_id);
+            }
+        }
+        Expr::Await(await_expr) => {
+            visit_expr_calls(builder, &await_expr.value, source, file, caller_id);
+
+            if let Expr::Call(call) = await_expr.value.as_ref() {
+                let loc = helpers::location(file, source, await_expr.range.start().to_usize());
+                match call.func.as_ref() {
+                    Expr::Name(name) => {
+                        builder.add_pending(
+                            caller_id,
+                            &name.id.to_string(),
+                            EdgeKind::AwaitCalls,
+                            Some(loc.clone()),
+                            Some("direct"),
+                        );
+                    }
+                    Expr::Attribute(attr) => {
+                        builder.add_pending(
+                            caller_id,
+                            &attr.attr.to_string(),
+                            EdgeKind::AwaitCalls,
+                            Some(loc.clone()),
+                            Some("method"),
+                        );
+                    }
+                    _ => {
+                        builder.add_pending(
+                            caller_id,
+                            "?",
+                            EdgeKind::AwaitCalls,
+                            Some(loc),
+                            Some("direct"),
+                        );
+                    }
+                }
             }
         }
         Expr::Attribute(attr) => {
@@ -535,7 +827,11 @@ fn expr_to_string(expr: &Expr) -> String {
             format!("{}.{}", expr_to_string(&attr.value), attr.attr.to_string())
         }
         Expr::Subscript(sub) => {
-            format!("{}[{}]", expr_to_string(&sub.value), expr_to_string(&sub.slice))
+            format!(
+                "{}[{}]",
+                expr_to_string(&sub.value),
+                expr_to_string(&sub.slice)
+            )
         }
         Expr::Tuple(tup) => {
             let items: Vec<String> = tup.elts.iter().map(expr_to_string).collect();
@@ -550,12 +846,504 @@ fn expr_to_string(expr: &Expr) -> String {
                 Operator::BitOr => "|",
                 _ => "?",
             };
-            format!("{} {} {}", expr_to_string(&binop.left), op_str, expr_to_string(&binop.right))
+            format!(
+                "{} {} {}",
+                expr_to_string(&binop.left),
+                op_str,
+                expr_to_string(&binop.right)
+            )
         }
         Expr::UnaryOp(unary) => {
             format!("?{}", expr_to_string(&unary.operand))
         }
         _ => "?".to_string(),
+    }
+}
+
+fn classify_class(cd: &StmtClassDef) -> NodeKind {
+    for dec in &cd.decorator_list {
+        if let Some(name) = extract_qualified_name(dec).or_else(|| extract_name(dec)) {
+            if name == "dataclass"
+                || name == "dataclasses.dataclass"
+                || last_name_segment(&name) == "dataclass"
+            {
+                return NodeKind::DataType;
+            }
+        }
+    }
+
+    for base in &cd.bases {
+        if let Some(name) = extract_qualified_name(base).or_else(|| extract_name(base)) {
+            match last_name_segment(&name) {
+                "Enum" => return NodeKind::Enum,
+                "Protocol" => return NodeKind::Protocol,
+                "ABC" => return NodeKind::ABC,
+                "NamedTuple" => return NodeKind::NamedTuple,
+                _ => {}
+            }
+        }
+    }
+
+    for base in &cd.bases {
+        if let Expr::Call(call) = base {
+            if let Some(name) = extract_qualified_name(call.func.as_ref())
+                .or_else(|| extract_name(call.func.as_ref()))
+            {
+                if last_name_segment(&name) == "namedtuple" {
+                    return NodeKind::NamedTuple;
+                }
+            }
+        }
+    }
+
+    NodeKind::Class
+}
+
+fn classify_callable_kind(name: &str, body: &[Stmt], default_kind: NodeKind) -> NodeKind {
+    if has_yield(body) {
+        NodeKind::Generator
+    } else if is_constructor(name) {
+        NodeKind::Constructor
+    } else if is_dunder(name) {
+        NodeKind::Dunder
+    } else {
+        default_kind
+    }
+}
+
+fn classify_class_variable(name: &str) -> NodeKind {
+    if is_constant_name(name) {
+        NodeKind::Constant
+    } else {
+        NodeKind::ClassVariable
+    }
+}
+
+fn has_yield(body: &[Stmt]) -> bool {
+    body.iter().any(stmt_contains_yield)
+}
+
+fn stmt_contains_yield(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::Expr(expr_stmt) => expr_contains_yield(&expr_stmt.value),
+        Stmt::Assign(assign) => {
+            assign.targets.iter().any(expr_contains_yield) || expr_contains_yield(&assign.value)
+        }
+        Stmt::AnnAssign(ann) => {
+            expr_contains_yield(ann.target.as_ref())
+                || expr_contains_yield(&ann.annotation)
+                || ann
+                    .value
+                    .as_ref()
+                    .is_some_and(|expr| expr_contains_yield(expr))
+        }
+        Stmt::AugAssign(assign) => {
+            expr_contains_yield(assign.target.as_ref()) || expr_contains_yield(&assign.value)
+        }
+        Stmt::Return(ret) => ret
+            .value
+            .as_ref()
+            .is_some_and(|expr| expr_contains_yield(expr)),
+        Stmt::If(if_stmt) => {
+            expr_contains_yield(&if_stmt.test)
+                || has_yield(&if_stmt.body)
+                || has_yield(&if_stmt.orelse)
+        }
+        Stmt::For(for_stmt) => {
+            expr_contains_yield(for_stmt.target.as_ref())
+                || expr_contains_yield(&for_stmt.iter)
+                || has_yield(&for_stmt.body)
+                || has_yield(&for_stmt.orelse)
+        }
+        Stmt::AsyncFor(for_stmt) => {
+            expr_contains_yield(for_stmt.target.as_ref())
+                || expr_contains_yield(&for_stmt.iter)
+                || has_yield(&for_stmt.body)
+                || has_yield(&for_stmt.orelse)
+        }
+        Stmt::While(while_stmt) => {
+            expr_contains_yield(&while_stmt.test)
+                || has_yield(&while_stmt.body)
+                || has_yield(&while_stmt.orelse)
+        }
+        Stmt::With(with_stmt) => {
+            with_stmt.items.iter().any(|item| {
+                expr_contains_yield(&item.context_expr)
+                    || item
+                        .optional_vars
+                        .as_ref()
+                        .is_some_and(|expr| expr_contains_yield(expr))
+            }) || has_yield(&with_stmt.body)
+        }
+        Stmt::AsyncWith(with_stmt) => {
+            with_stmt.items.iter().any(|item| {
+                expr_contains_yield(&item.context_expr)
+                    || item
+                        .optional_vars
+                        .as_ref()
+                        .is_some_and(|expr| expr_contains_yield(expr))
+            }) || has_yield(&with_stmt.body)
+        }
+        Stmt::Try(try_stmt) => {
+            has_yield(&try_stmt.body)
+                || try_stmt.handlers.iter().any(except_handler_contains_yield)
+                || has_yield(&try_stmt.orelse)
+                || has_yield(&try_stmt.finalbody)
+        }
+        Stmt::Match(match_stmt) => {
+            expr_contains_yield(&match_stmt.subject)
+                || match_stmt.cases.iter().any(|case| {
+                    case.guard
+                        .as_ref()
+                        .is_some_and(|expr| expr_contains_yield(expr))
+                        || has_yield(&case.body)
+                })
+        }
+        Stmt::FunctionDef(_) | Stmt::AsyncFunctionDef(_) | Stmt::ClassDef(_) => false,
+        _ => false,
+    }
+}
+
+fn except_handler_contains_yield(handler: &ExceptHandler) -> bool {
+    let ExceptHandler::ExceptHandler(handler) = handler;
+    handler
+        .type_
+        .as_ref()
+        .is_some_and(|expr| expr_contains_yield(expr))
+        || has_yield(&handler.body)
+}
+
+fn expr_contains_yield(expr: &Expr) -> bool {
+    match expr {
+        Expr::Yield(_) | Expr::YieldFrom(_) => true,
+        Expr::Await(await_expr) => expr_contains_yield(&await_expr.value),
+        Expr::Call(call) => {
+            expr_contains_yield(call.func.as_ref())
+                || call.args.iter().any(expr_contains_yield)
+                || call
+                    .keywords
+                    .iter()
+                    .any(|kw| expr_contains_yield(&kw.value))
+        }
+        Expr::Attribute(attr) => expr_contains_yield(&attr.value),
+        Expr::BinOp(binop) => expr_contains_yield(&binop.left) || expr_contains_yield(&binop.right),
+        Expr::UnaryOp(unary) => expr_contains_yield(&unary.operand),
+        Expr::BoolOp(boolop) => boolop.values.iter().any(expr_contains_yield),
+        Expr::Compare(cmp) => {
+            expr_contains_yield(&cmp.left) || cmp.comparators.iter().any(expr_contains_yield)
+        }
+        Expr::IfExp(ifexp) => {
+            expr_contains_yield(&ifexp.test)
+                || expr_contains_yield(&ifexp.body)
+                || expr_contains_yield(&ifexp.orelse)
+        }
+        Expr::Subscript(sub) => expr_contains_yield(&sub.value) || expr_contains_yield(&sub.slice),
+        Expr::List(list) => list.elts.iter().any(expr_contains_yield),
+        Expr::Tuple(tuple) => tuple.elts.iter().any(expr_contains_yield),
+        Expr::Set(set) => set.elts.iter().any(expr_contains_yield),
+        Expr::Dict(dict) => {
+            dict.keys.iter().flatten().any(expr_contains_yield)
+                || dict.values.iter().any(expr_contains_yield)
+        }
+        Expr::ListComp(comp) => expr_contains_yield(&comp.elt),
+        Expr::SetComp(comp) => expr_contains_yield(&comp.elt),
+        Expr::GeneratorExp(comp) => expr_contains_yield(&comp.elt),
+        Expr::DictComp(comp) => expr_contains_yield(&comp.key) || expr_contains_yield(&comp.value),
+        Expr::Lambda(lambda) => expr_contains_yield(&lambda.body),
+        Expr::NamedExpr(named) => {
+            expr_contains_yield(named.target.as_ref()) || expr_contains_yield(&named.value)
+        }
+        Expr::Starred(star) => expr_contains_yield(&star.value),
+        Expr::Slice(slice) => {
+            slice
+                .lower
+                .as_ref()
+                .is_some_and(|expr| expr_contains_yield(expr))
+                || slice
+                    .upper
+                    .as_ref()
+                    .is_some_and(|expr| expr_contains_yield(expr))
+                || slice
+                    .step
+                    .as_ref()
+                    .is_some_and(|expr| expr_contains_yield(expr))
+        }
+        Expr::FormattedValue(value) => expr_contains_yield(&value.value),
+        Expr::JoinedStr(joined) => joined.values.iter().any(expr_contains_yield),
+        _ => false,
+    }
+}
+
+fn visit_instance_variables(
+    builder: &mut Builder,
+    body: &[Stmt],
+    source: &str,
+    file: &str,
+    class_qname: &str,
+    class_id: &str,
+) {
+    let mut seen = BTreeSet::new();
+    let mut vars = Vec::new();
+    collect_instance_variables(body, source, &mut vars);
+
+    for (name, line) in vars {
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+
+        let qname = format!("{}.{}", class_qname, name);
+        let field_id = builder.add_node(
+            NodeKind::InstanceVariable,
+            &name,
+            &qname,
+            Some(file),
+            line,
+            line,
+            helpers::visibility(&name).as_deref(),
+            None,
+            None,
+        );
+        builder.edge(class_id, &field_id, EdgeKind::HasField, None, None, None);
+    }
+}
+
+fn collect_instance_variables(body: &[Stmt], source: &str, out: &mut Vec<(String, usize)>) {
+    for stmt in body {
+        match stmt {
+            Stmt::Assign(assign) => {
+                for target in &assign.targets {
+                    if let Some(name) = extract_self_attribute_name(target) {
+                        let line = helpers::offset_line(source, assign.range.start().to_usize());
+                        out.push((name, line));
+                    }
+                }
+                collect_instance_variables_from_expr(&assign.value, source, out);
+            }
+            Stmt::AnnAssign(ann) => {
+                if let Some(name) = extract_self_attribute_name(ann.target.as_ref()) {
+                    let line = helpers::offset_line(source, ann.range.start().to_usize());
+                    out.push((name, line));
+                }
+                if let Some(value) = &ann.value {
+                    collect_instance_variables_from_expr(value, source, out);
+                }
+            }
+            Stmt::If(if_stmt) => {
+                collect_instance_variables(&if_stmt.body, source, out);
+                collect_instance_variables(&if_stmt.orelse, source, out);
+            }
+            Stmt::For(for_stmt) => {
+                collect_instance_variables(&for_stmt.body, source, out);
+                collect_instance_variables(&for_stmt.orelse, source, out);
+            }
+            Stmt::AsyncFor(for_stmt) => {
+                collect_instance_variables(&for_stmt.body, source, out);
+                collect_instance_variables(&for_stmt.orelse, source, out);
+            }
+            Stmt::While(while_stmt) => {
+                collect_instance_variables(&while_stmt.body, source, out);
+                collect_instance_variables(&while_stmt.orelse, source, out);
+            }
+            Stmt::With(with_stmt) => collect_instance_variables(&with_stmt.body, source, out),
+            Stmt::AsyncWith(with_stmt) => collect_instance_variables(&with_stmt.body, source, out),
+            Stmt::Try(try_stmt) => {
+                collect_instance_variables(&try_stmt.body, source, out);
+                for handler in &try_stmt.handlers {
+                    let ExceptHandler::ExceptHandler(handler) = handler;
+                    collect_instance_variables(&handler.body, source, out);
+                }
+                collect_instance_variables(&try_stmt.orelse, source, out);
+                collect_instance_variables(&try_stmt.finalbody, source, out);
+            }
+            Stmt::Match(match_stmt) => {
+                for case in &match_stmt.cases {
+                    collect_instance_variables(&case.body, source, out);
+                }
+            }
+            Stmt::FunctionDef(_) | Stmt::AsyncFunctionDef(_) | Stmt::ClassDef(_) => {}
+            _ => {}
+        }
+    }
+}
+
+fn collect_instance_variables_from_expr(expr: &Expr, source: &str, out: &mut Vec<(String, usize)>) {
+    match expr {
+        Expr::IfExp(ifexp) => {
+            collect_instance_variables_from_expr(&ifexp.body, source, out);
+            collect_instance_variables_from_expr(&ifexp.orelse, source, out);
+        }
+        Expr::BoolOp(boolop) => {
+            for value in &boolop.values {
+                collect_instance_variables_from_expr(value, source, out);
+            }
+        }
+        Expr::Call(call) => {
+            for arg in &call.args {
+                collect_instance_variables_from_expr(arg, source, out);
+            }
+            for kw in &call.keywords {
+                collect_instance_variables_from_expr(&kw.value, source, out);
+            }
+        }
+        Expr::Await(await_expr) => {
+            collect_instance_variables_from_expr(&await_expr.value, source, out)
+        }
+        Expr::List(list) => {
+            for elt in &list.elts {
+                collect_instance_variables_from_expr(elt, source, out);
+            }
+        }
+        Expr::Tuple(tuple) => {
+            for elt in &tuple.elts {
+                collect_instance_variables_from_expr(elt, source, out);
+            }
+        }
+        Expr::Dict(dict) => {
+            for key in dict.keys.iter().flatten() {
+                collect_instance_variables_from_expr(key, source, out);
+            }
+            for value in &dict.values {
+                collect_instance_variables_from_expr(value, source, out);
+            }
+        }
+        Expr::NamedExpr(named) => {
+            if let Some(name) = extract_self_attribute_name(named.target.as_ref()) {
+                let line = helpers::offset_line(source, named.range.start().to_usize());
+                out.push((name, line));
+            }
+            collect_instance_variables_from_expr(&named.value, source, out);
+        }
+        _ => {}
+    }
+}
+
+fn extract_self_attribute_name(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Attribute(attr) => {
+            if let Expr::Name(name) = attr.value.as_ref() {
+                if name.id.as_str() == "self" {
+                    return Some(attr.attr.to_string());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn maybe_add_override_edges(
+    builder: &mut Builder,
+    method_id: &str,
+    method_name: &str,
+    base_names: &[String],
+    file: &str,
+    source: &str,
+    offset: usize,
+) {
+    if base_names.is_empty() || !is_common_override_method(method_name) {
+        return;
+    }
+
+    let base_suffixes: Vec<String> = base_names
+        .iter()
+        .map(|name| format!(".{}.{}", last_name_segment(name), method_name))
+        .collect();
+
+    let target_ids: Vec<String> = builder
+        .nodes
+        .iter()
+        .filter(|node| is_method_like(&node.kind) && node.name == method_name)
+        .filter(|node| {
+            base_suffixes
+                .iter()
+                .any(|suffix| node.qualified_name.ends_with(suffix))
+        })
+        .map(|node| node.id.clone())
+        .collect();
+
+    let loc = helpers::location(file, source, offset);
+
+    if target_ids.is_empty() {
+        builder.add_pending(method_id, method_name, EdgeKind::Overrides, Some(loc), None);
+        return;
+    }
+
+    for target_id in target_ids {
+        builder.edge(
+            method_id,
+            &target_id,
+            EdgeKind::Overrides,
+            None,
+            Some(loc.clone()),
+            None,
+        );
+    }
+}
+
+fn is_method_like(kind: &NodeKind) -> bool {
+    matches!(
+        kind,
+        NodeKind::Method
+            | NodeKind::AsyncMethod
+            | NodeKind::ClassMethod
+            | NodeKind::StaticMethod
+            | NodeKind::Property
+            | NodeKind::Dunder
+            | NodeKind::Constructor
+            | NodeKind::Generator
+    )
+}
+
+fn is_dunder(name: &str) -> bool {
+    name.starts_with("__") && name.ends_with("__") && name.len() > 4
+}
+
+fn is_constructor(name: &str) -> bool {
+    name == "__init__"
+}
+
+fn is_constant_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.chars().any(|ch| ch.is_ascii_uppercase())
+        && !name.chars().any(|ch| ch.is_ascii_lowercase())
+}
+
+fn is_common_override_method(name: &str) -> bool {
+    matches!(
+        name,
+        "__init__"
+            | "__str__"
+            | "__repr__"
+            | "__eq__"
+            | "__ne__"
+            | "__lt__"
+            | "__le__"
+            | "__gt__"
+            | "__ge__"
+            | "__hash__"
+            | "__len__"
+            | "__iter__"
+            | "__next__"
+            | "__enter__"
+            | "__exit__"
+            | "__call__"
+            | "__getitem__"
+            | "__setitem__"
+    )
+}
+
+fn last_name_segment(name: &str) -> &str {
+    name.rsplit('.').next().unwrap_or(name)
+}
+
+fn extract_qualified_name(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Name(name) => Some(name.id.to_string()),
+        Expr::Attribute(attr) => extract_qualified_name(&attr.value)
+            .map(|value| format!("{}.{}", value, attr.attr))
+            .or_else(|| Some(attr.attr.to_string())),
+        Expr::Call(call) => extract_qualified_name(&call.func),
+        _ => None,
     }
 }
 
