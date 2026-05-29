@@ -2,8 +2,7 @@ use clap::{Parser, Subcommand, Args};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "pyscope")]
-#[command(about = "Python code satellite map — index, query, and navigate your codebase")]
+#[command(name = "pyscope", version, about = "Python code satellite map — index, query, and navigate your codebase")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
